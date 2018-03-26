@@ -12,42 +12,81 @@ namespace IocProject
     bool Login(string username, string password);
   }
 
-  public class TestUser : ILogin
+  public class IocTestClass
   {
-    public string Username { get; }
-    public string Password { get; }
+    public int TestInt { get; }
+    public double TestDouble { get; }
+    public char TestChar { get; }
+    public bool TestBool { get; }
+    public string TestString { get; }
 
-    public TestUser(string username, string password)
+    public IocTestClass(int testInt, double testDouble, char testChar, bool testBool, string testString)
     {
-      Username = username;
-      Password = password;
+      TestInt = testInt;
+      TestDouble = testDouble;
+      TestChar = testChar;
+      TestBool = testBool;
+      TestString = testString;
     }
+  }
 
-    public bool Login(string username, string password)
-    {
-      return username.Equals(Username, StringComparison.InvariantCulture)
-        && password.Equals(Password, StringComparison.InvariantCulture);
-    }
+  public class IocTestClass2
+  {
+    public int TestInt { get; }
   }
 
   public class Program
   {
+    private static Dictionary<Type, Type> _registeredTypes;
+
     static void Main(string[] args)
     {
+      _registeredTypes = new Dictionary<Type, Type>();
+      _registeredTypes.Add(typeof(IocTestClass), typeof(IocTestClass));
       var assembly = Assembly.GetExecutingAssembly();
-      var userType = assembly.GetType("IocProject.TestUser");
+      var userType = assembly.GetType("IocProject.IocTestClass");
       var ctorArgs = userType.GetConstructors().First().GetParameters();
-      // Phase 1: Get this list of types from the constructor, and then build a list of default values for primitive types, nulls for non-primitive for the given constructor
-      // Then execute to create an object
-
+      var defaultCtorArgs = GetDefaultValuesForParameters(ctorArgs);
+      var instance = (IocTestClass)Activator.CreateInstance(typeof(IocTestClass), defaultCtorArgs);
       // Phase 2: Create a Dictionary of registered concrete types to construct default values for non-primitive types using recursion to identify parameters to get its own values
-
-      var ctor = userType.GetConstructor(new Type[] { typeof(string), typeof(string) });
-      var userInstance = ctor.Invoke(new object[] { "aclay", "test123" });
-      var loginMethod = userType.GetMethod("Login");
-      Console.WriteLine(loginMethod.Invoke(userInstance, new object[] { "aclay", "test123" }));
-
+      Console.WriteLine(ObjectPropertiesToString(instance));
       Console.ReadKey();
+    }
+
+    public static object[] GetDefaultValuesForParameters(ParameterInfo[] parameters)
+    {
+      var result = new List<object>();
+      foreach (var parameter in parameters)
+      {
+        var parameterType = parameter.ParameterType;
+        if (parameterType.IsPrimitive)
+        {
+          result.Add(Activator.CreateInstance(parameterType));
+        }
+        else if (_registeredTypes.ContainsKey(parameterType))
+        {
+          var ctorArgs = parameterType.GetConstructors().First().GetParameters();
+          var defaultCtorArgs = GetDefaultValuesForParameters(ctorArgs);
+          var instance = (IocTestClass)Activator.CreateInstance(typeof(IocTestClass), defaultCtorArgs);
+          result.Add(instance);
+        }
+        else
+        {
+          result.Add(null);
+        }
+      }
+      return result.ToArray();
+    }
+
+    public static string ObjectPropertiesToString(object obj)
+    {
+      var result = string.Empty;
+      var properties = obj.GetType().GetProperties();
+      foreach (var p in properties)
+      {
+        result += $"{p.Name} = {p.GetValue(obj)},\n";
+      }
+      return result;
     }
   }
 }
