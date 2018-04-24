@@ -1,5 +1,9 @@
-﻿using System;
+﻿using IocProject.RPG.Characters;
+using IocProject.RPG.Characters.Classes;
+using IocProject.RPG.Characters.Races;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -7,75 +11,61 @@ using System.Threading.Tasks;
 
 namespace IocProject
 {
-  public interface ILogin
-  {
-    bool Login(string username, string password);
-  }
-
-  public class IocTestClass
-  {
-    public int TestInt { get; }
-    public double TestDouble { get; }
-    public char TestChar { get; }
-    public bool TestBool { get; }
-    public string TestString { get; }
-
-    public IocTestClass(int testInt, double testDouble, char testChar, bool testBool, string testString)
-    {
-      TestInt = testInt;
-      TestDouble = testDouble;
-      TestChar = testChar;
-      TestBool = testBool;
-      TestString = testString;
-    }
-  }
-
-  public class IocTestClass2
-  {
-    public int TestInt { get; }
-  }
-
   public class Program
   {
-    private static Dictionary<Type, Type> _registeredTypes;
-
     static void Main(string[] args)
     {
-      _registeredTypes = new Dictionary<Type, Type>();
-      _registeredTypes.Add(typeof(IocTestClass), typeof(IocTestClass));
-      var assembly = Assembly.GetExecutingAssembly();
-      var userType = assembly.GetType("IocProject.IocTestClass");
-      var ctorArgs = userType.GetConstructors().First().GetParameters();
-      var defaultCtorArgs = GetDefaultValuesForParameters(ctorArgs);
-      var instance = (IocTestClass)Activator.CreateInstance(typeof(IocTestClass), defaultCtorArgs);
+      var ioc = new IocContainer();
+      ioc.Register<IHuman, Human>();
+      ioc.Register<IFighter, Fighter>();
+      ioc.Register<IHumanFighter, HumanFighter>();
+
+      var iocSimple = new IocContainerSimple();
+      iocSimple.Register<IHuman, Human>();
+      iocSimple.Register<IFighter, Fighter>();
+      iocSimple.Register<IHumanFighter, HumanFighter>();
+
+      var npcs = new List<IHumanFighter>();
+      var numberOfIterations = 1000000;
+
+      GetTimeForAction(() =>
+      {
+        for (var i = 0; i < numberOfIterations; i++)
+        {
+          npcs.Add(new HumanFighter(new Human(), new Fighter(), "Joe"));
+        }
+      });
+
+      GetTimeForAction(() =>
+      {
+        for (var i = 0; i < numberOfIterations; i++)
+        {
+          npcs.Add(iocSimple.Resolve<IHumanFighter>());
+        }
+      });
+
+      GetTimeForAction(() =>
+      {
+        for (var i = 0; i < numberOfIterations; i++)
+        {
+          npcs.Add(ioc.Resolve<IHumanFighter>());
+        }
+      });
+
       // Phase 2: Create a Dictionary of registered concrete types to construct default values for non-primitive types using recursion to identify parameters to get its own values
-      Console.WriteLine(ObjectPropertiesToString(instance));
+      // Phase 3: Create an Ioc object to orchestrate registration and creation
+      // Register<T, T>(), Resolve<T>(), Register is abstract/concrete, Resolve is just abstract
+
       Console.ReadKey();
     }
 
-    public static object[] GetDefaultValuesForParameters(ParameterInfo[] parameters)
+    private static void GetTimeForAction(Action action)
     {
-      var result = new List<object>();
-      foreach (var parameter in parameters)
-      {
-        var parameterType = parameter.ParameterType;
-        if (parameterType.IsPrimitive)
-        {
-          result.Add(Activator.CreateInstance(parameterType));
-        }
-        else if (_registeredTypes.ContainsKey(parameterType))
-        {
-          var ctorArgs = parameterType.GetConstructors().First().GetParameters();
-          var defaultCtorArgs = GetDefaultValuesForParameters(ctorArgs);
-          var instance = (IocTestClass)Activator.CreateInstance(typeof(IocTestClass), defaultCtorArgs);
-          result.Add(instance);
-        }
-        else
-        {
-          result.Add(null);
-        }
-      }
-      return result.ToArray();
+      var stopwatch = new Stopwatch();
+      stopwatch.Start();
+      action.Invoke();
+      stopwatch.Stop();
+      Console.WriteLine(stopwatch.ElapsedMilliseconds);
     }
 
     public static string ObjectPropertiesToString(object obj)
@@ -84,7 +74,16 @@ namespace IocProject
       var properties = obj.GetType().GetProperties();
       foreach (var p in properties)
       {
-        result += $"{p.Name} = {p.GetValue(obj)},\n";
+        var pType = p.PropertyType;
+        if (pType.IsPrimitive || pType == typeof(string))
+        {
+          result += $"{p.Name} = {p.GetValue(obj)},\n";
+        }
+        else
+        {
+          //ObjectPropertiesToString(p);
+          result += p.ToString() + "\n";
+        }
       }
       return result;
     }
